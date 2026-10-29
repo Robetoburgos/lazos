@@ -1,2 +1,2 @@
 # lazos
-es un lugar para guardar mini paginas web
+Es un lugar para guardar micro paginas web
