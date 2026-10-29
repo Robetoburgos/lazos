@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinkCraft NFC · Páginas para negocios locales</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style type="text/tailwindcss">
+  .inp{@apply w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500}
+  .lbl{@apply block text-xs font-medium text-slate-400 mb-1}
+  .btn{@apply px-3.5 py-2 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition}
+  .btn-p{@apply px-3.5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition}
+  .ib{@apply w-7 h-7 rounded-lg text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed}
+  .tab{@apply flex-1 min-w-[90px] py-2 px-3 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 border border-transparent}
+  .tab[aria-selected=true]{@apply text-indigo-300 bg-indigo-500/10 border-indigo-500/30}
+</style>
+<style>
+  :focus-visible{outline:2px solid #818cf8;outline-offset:2px}
+  #qr-svg svg{width:100%;height:auto;display:block}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased" style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+
+<div id="toast" role="status" aria-live="polite" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-indigo-600 text-sm font-medium shadow-xl transition-all duration-300 opacity-0 -translate-y-6 pointer-events-none"></div>
+
+<header class="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-4 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h1 class="font-bold text-lg leading-none">LinkCraft NFC</h1>
+    <p class="text-xs text-slate-400 mt-1">Páginas para negocios locales, listas para pegatina NFC y QR</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <button class="btn" onclick="exportJSON()">Guardar proyecto</button>
+    <label class="btn cursor-pointer">Abrir proyecto<input type="file" accept="application/json" class="sr-only" onchange="importJSON(this)"></label>
+    <button class="btn" onclick="copyHTML()">Copiar HTML</button>
+    <button class="btn-p" onclick="downloadHTML()">Descargar página</button>
+  </div>
+</header>
+
+<main class="max-w-[1300px] mx-auto p-3 sm:p-6 grid lg:grid-cols-[1fr_390px] gap-6 items-start">
+
+  <section class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden">
+    <div role="tablist" class="flex gap-1 p-2 border-b border-slate-800 bg-slate-950/40 overflow-x-auto">
+      <button class="tab" role="tab" data-tab="perfil" aria-selected="true">Perfil</button>
+      <button class="tab" role="tab" data-tab="enlaces" aria-selected="false">Enlaces</button>
+      <button class="tab" role="tab" data-tab="diseno" aria-selected="false">Diseño</button>
+      <button class="tab" role="tab" data-tab="stats" aria-selected="false">Estadísticas</button>
+    </div>
+
+    <div class="p-4 sm:p-6">
+      <!-- PERFIL -->
+      <div id="p-perfil" class="space-y-5">
+        <div><label class="lbl" for="in-name">Nombre o negocio</label><input id="in-name" class="inp" maxlength="60"></div>
+        <div><label class="lbl" for="in-bio">Descripción corta</label><textarea id="in-bio" class="inp resize-none" rows="2" maxlength="160"></textarea></div>
+        <div><label class="lbl" for="in-avatar">Foto o logo (URL, opcional)</label><input id="in-avatar" class="inp" placeholder="https://..."><p class="text-xs text-slate-500 mt-1">Si la dejas vacía se muestra la inicial del nombre.</p></div>
+        <div>
+          <h2 class="text-sm font-semibold mb-2">Redes sociales</h2>
+          <div id="socials" class="grid sm:grid-cols-2 gap-3"></div>
+        </div>
+        <div class="rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-4 space-y-3">
+          <h2 class="text-sm font-semibold text-indigo-300">Plantilla por giro</h2>
+          <div class="flex gap-2"><select id="tpl" class="inp" aria-label="Giro del negocio"></select><button class="btn-p shrink-0" onclick="applyTpl()">Aplicar</button></div>
+          <p class="text-xs text-slate-400">Reemplaza descripción, enlaces y tema. Después solo cambia los datos del negocio.</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
+          <h2 class="text-sm font-semibold">Datos del negocio</h2>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><label class="lbl" for="b-maps">Enlace «Cómo llegar» (Google Maps)</label><input id="b-maps" class="inp" data-biz="maps" placeholder="https://maps.app.goo.gl/..."></div>
+            <div><label class="lbl" for="b-review">Enlace para reseñas de Google</label><input id="b-review" class="inp" data-biz="review" placeholder="https://g.page/r/..."></div>
+            <div><label class="lbl" for="b-tel">Teléfono para llamar</label><input id="b-tel" class="inp" data-biz="tel" inputmode="tel" placeholder="55 1234 5678"></div>
+            <div><label class="lbl" for="b-horario">Horario</label><input id="b-horario" class="inp" data-biz="horario" placeholder="Lun a Sáb 9:00 a 20:00"></div>
+            <div class="sm:col-span-2"><label class="lbl" for="b-sub">Nombre corto del negocio (va al final de la dirección)</label><input id="b-sub" class="inp" data-biz="sub" placeholder="estetica-lupita"></div>
+            <div class="sm:col-span-2"><label class="lbl" for="b-cf">Token de Cloudflare Web Analytics (opcional, 32 caracteres)</label><input id="b-cf" class="inp" data-biz="cf" placeholder="para contar visitas reales"></div>
+          </div>
+          <p class="text-xs text-slate-400">Dirección sugerida para la pegatina: <b id="nfc-url" class="text-slate-200 break-all"></b></p>
+          <div id="qr-box" class="hidden flex flex-wrap items-center gap-4 pt-1">
+            <div id="qr-svg" class="w-36 h-36 bg-white p-2 rounded-xl shrink-0" role="img" aria-label="Código QR de la página"></div>
+            <div class="space-y-2">
+              <p class="text-xs text-slate-400">QR de la misma dirección, para imprimir en tarjetas, mostradores o carteles.</p>
+              <div class="flex gap-2"><button class="btn" onclick="qrPNG()">Descargar PNG</button><button class="btn" onclick="qrSVG()">Descargar SVG</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-2xl border border-emerald-500/20 bg-emerald-950/30 p-4 space-y-3">
+          <h2 class="text-sm font-semibold text-emerald-300">Botón directo a WhatsApp</h2>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><label class="lbl" for="wa-phone">Número con código de país</label><input id="wa-phone" class="inp" inputmode="numeric" placeholder="5215512345678"></div>
+            <div><label class="lbl" for="wa-msg">Mensaje inicial</label><input id="wa-msg" class="inp" placeholder="Hola, quiero más información"></div>
+          </div>
+          <button class="btn-p w-full" onclick="addWhatsApp()">Añadir botón de WhatsApp</button>
+        </div>
+      </div>
+
+      <!-- ENLACES -->
+      <div id="p-enlaces" class="space-y-4 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold">Tus enlaces</h2>
+          <button class="btn-p" onclick="addLink()">Nuevo enlace</button>
+        </div>
+        <div id="links-list" class="space-y-3"></div>
+      </div>
+
+      <!-- DISEÑO -->
+      <div id="p-diseno" class="space-y-5 hidden">
+        <div>
+          <h2 class="text-sm font-semibold mb-2">Tema</h2>
+          <div id="themes" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-4">
+          <div><label class="lbl" for="d-font">Tipografía</label><select id="d-font" class="inp"></select></div>
+          <div><label class="lbl" for="d-radius">Forma de botones</label><select id="d-radius" class="inp">
+            <option value="16px">Redondeado</option><option value="999px">Píldora</option><option value="0">Cuadrado</option></select></div>
+          <div><label class="lbl" for="d-hover">Al pasar el cursor</label><select id="d-hover" class="inp">
+            <option value="lift">Elevar</option><option value="glow">Brillo</option><option value="none">Ninguno</option></select></div>
+        </div>
+      </div>
+
+      <!-- ESTADÍSTICAS -->
+      <div id="p-stats" class="space-y-4 hidden">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold">Clics de prueba</h2>
+          <button class="btn" onclick="resetStats()">Reiniciar</button>
+        </div>
+        <p class="text-xs text-slate-400">Cuentan los clics que haces en la vista previa. La página descargada es estática: para contar visitas y escaneos reales pega el token de Cloudflare Web Analytics en Perfil → Datos del negocio.</p>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          <span class="text-xs text-slate-400">Total de clics</span>
+          <div id="stat-total" class="text-3xl font-bold text-indigo-300">0</div>
+        </div>
+        <div id="stat-list" class="space-y-2"></div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="lg:sticky lg:top-20">
+    <p class="text-xs text-slate-400 mb-2 text-center">Vista previa en vivo</p>
+    <div class="mx-auto w-full max-w-[370px] h-[640px] rounded-[40px] border-[6px] border-slate-800 bg-slate-950 overflow-hidden shadow-2xl">
+      <iframe id="pv" title="Vista previa de tu página" sandbox="allow-scripts" class="w-full h-full"></iframe>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const THEMES = {
+  oscuro:{n:'Oscuro',bg:'#0b1020',tx:'#f1f5f9',bb:'#151b2e',bt:'#f1f5f9',bd:'#2a3350',ac:'#818cf8'},
+  claro:{n:'Claro',bg:'#f4f4f5',tx:'#18181b',bb:'#ffffff',bt:'#18181b',bd:'#e4e4e7',ac:'#18181b'},
+  atardecer:{n:'Atardecer',bg:'linear-gradient(135deg,#f97316,#e11d48 55%,#7c3aed)',tx:'#ffffff',bb:'rgba(255,255,255,.18)',bt:'#ffffff',bd:'rgba(255,255,255,.35)',ac:'#ffffff'},
+  neon:{n:'Cyberpunk',bg:'#0a0a0a',tx:'#facc15',bb:'#facc15',bt:'#0a0a0a',bd:'#000000',ac:'#facc15'},
+  esmeralda:{n:'Esmeralda',bg:'#022c22',tx:'#d1fae5',bb:'rgba(16,185,129,.15)',bt:'#d1fae5',bd:'rgba(52,211,153,.4)',ac:'#34d399'},
+  medianoche:{n:'Medianoche',bg:'linear-gradient(135deg,#0f172a,#3b0764 50%,#0f172a)',tx:'#f3e8ff',bb:'rgba(147,51,234,.25)',bt:'#f3e8ff',bd:'rgba(168,85,247,.4)',ac:'#c084fc'}
+};
+const FONTS = {
+  Inter:"'Inter',system-ui,sans-serif", Outfit:"'Outfit',system-ui,sans-serif",
+  Poppins:"'Poppins',system-ui,sans-serif", 'Space Grotesk':"'Space Grotesk',system-ui,sans-serif"
+};
+const ICONS = {globe:'🌐',sparkles:'✨',download:'📥',shop:'🛍️',video:'🎥',mail:'✉️',chat:'💬'};
+const SOC = [
+  ['instagram','Instagram','IG','https://instagram.com/'],['tiktok','TikTok','TT','https://tiktok.com/@'],
+  ['telegram','Telegram','TG','https://t.me/'],['x','X / Twitter','X','https://x.com/'],
+  ['youtube','YouTube (sin @)','YT','https://youtube.com/@'],['whatsapp','WhatsApp (con código de país)','WA','https://wa.me/']
+];
+
+const DEFAULTS = () => ({
+  profile:{name:'Sofia Ross',bio:'Diseñadora digital y creadora de contenido. Comparto recursos útiles cada semana.',avatar:'',
+    socials:{instagram:'sofia.design',tiktok:'',telegram:'',x:'',youtube:'',whatsapp:'5215512345678'}},
+  biz:{maps:'',review:'',tel:'',horario:'',sub:'',cf:''},
+  design:{theme:'oscuro',font:'Inter',radius:'16px',hover:'lift'},
+  links:[
+    {id:'a1',title:'Mi portafolio',subtitle:'Proyectos de UI/UX y diseño gráfico',url:'https://example.com',icon:'globe',clicks:0},
+    {id:'a2',title:'Escríbeme por WhatsApp',subtitle:'Respondo el mismo día',url:'https://wa.me/5215512345678?text='+encodeURIComponent('Hola, quisiera cotizar un servicio'),icon:'chat',clicks:0},
+    {id:'a3',title:'Recursos gratis',subtitle:'Plantillas Figma e iconos',url:'https://example.com/gratis',icon:'download',clicks:0}
+  ]
+});
+
+let S = load();
+
+function load(){
+  const d = DEFAULTS();
+  try{
+    const r = JSON.parse(localStorage.getItem('linkcraft_v2') || 'null');
+    if(r){
+      Object.assign(d.profile, r.profile, {socials:Object.assign(d.profile.socials, r.profile?.socials)});
+      Object.assign(d.design, r.design); Object.assign(d.biz, r.biz);
+      if(Array.isArray(r.links)) d.links = r.links;
+    }
+  }catch(e){}
+  if(!THEMES[d.design.theme]) d.design.theme = 'oscuro';
+  return d;
+}
+function save(){ try{ localStorage.setItem('linkcraft_v2', JSON.stringify(S)); }catch(e){} }
+
+/* ---------- Utilidades seguras ---------- */
+function safeUrl(u){
+  u = String(u||'').trim();
+  if(!u) return '#';
+  if(!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+  try{
+    const p = new URL(u).protocol;
+    return ['http:','https:','mailto:','tel:'].includes(p) ? esc(u) : '#';
+  }catch(e){ return '#'; }
+}
+function socialUrl(key, val){
+  const s = SOC.find(x=>x[0]===key), v = String(val||'').trim().replace(/^@/,'');
+  if(!v) return null;
+  if(/^https?:\/\//i.test(v)) return safeUrl(v);
+  return esc(s[3] + (key==='whatsapp' ? v.replace(/\D/g,'') : encodeURIComponent(v)));
+}
+
+/* ---------- Página pública (misma función para vista previa y exportación) ---------- */
+function buildPage(preview){
+  const t = THEMES[S.design.theme], p = S.profile, d = S.design;
+  const hov = d.hover==='lift' ? 'transform:translateY(-3px)' : d.hover==='glow' ? `box-shadow:0 0 18px ${t.ac}` : '';
+  const name = p.name || 'Tu nombre';
+  const avatar = /^(https?:|data:image\/)/i.test(p.avatar||'')
+    ? `<img class="av" src="${esc(p.avatar)}" alt="">`
+    : `<div class="av" aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</div>`;
+  const socials = SOC.map(([k,label,short])=>{
+    const u = socialUrl(k, p.socials[k]);
+    return u ? `<a href="${u}" target="_blank" rel="noopener noreferrer" aria-label="${esc(label)}">${short}</a>` : '';
+  }).join('');
+  const b = S.biz;
+  const extra = [[b.maps,'📍','Cómo llegar','Abrir en Google Maps'],[b.review,'⭐','Déjanos tu reseña','Nos ayuda a que más gente nos encuentre'],[b.tel?'tel:'+b.tel.replace(/[^\d+]/g,''):'','📞','Llamar ahora',b.tel]]
+    .filter(x=>x[0]).map(x=>`<a class="b" href="${safeUrl(x[0])}" target="_blank" rel="noopener noreferrer"><span class="i" aria-hidden="true">${x[1]}</span><span class="t"><b>${esc(x[2])}</b><small>${esc(x[3])}</small></span></a>`).join('');
+  const links = extra + S.links.map(l=>`<a class="b" href="${safeUrl(l.url)}" target="_blank" rel="noopener noreferrer" data-id="${esc(l.id)}">
+    <span class="i" aria-hidden="true">${ICONS[l.icon]||ICONS.globe}</span>
+    <span class="t"><b>${esc(l.title)}</b>${l.subtitle?`<small>${esc(l.subtitle)}</small>`:''}</span></a>`).join('');
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(name)}</title><meta name="description" content="${esc(p.bio)}">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@400;600;700&family=Poppins:wght@400;600;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+body{min-height:100vh;background:${t.bg};color:${t.tx};font-family:${FONTS[d.font]||FONTS.Inter};padding:40px 20px;display:flex;justify-content:center}
+main{width:100%;max-width:440px;text-align:center}
+.av{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid ${t.ac};margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700}
+h1{font-size:22px}
+p{opacity:.8;font-size:14px;line-height:1.5;margin-top:6px}
+.so{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:18px 0 8px}
+.so a{min-width:36px;height:36px;padding:0 8px;border-radius:999px;background:rgba(127,127,127,.22);color:inherit;text-decoration:none;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.b{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-top:12px;background:${t.bb};color:${t.bt};border:1px solid ${t.bd};border-radius:${d.radius};text-decoration:none;text-align:left;transition:transform .2s,box-shadow .2s}
+.b:hover,.b:focus-visible{${hov}}
+.i{font-size:20px}.t{display:flex;flex-direction:column;min-width:0}
+.t b{font-size:15px;font-weight:600}.t small{font-size:12px;opacity:.75;margin-top:2px}
+a:focus-visible{outline:2px solid ${t.ac};outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.b{transition:none}}
+</style></head>
+<body><main>${avatar}<h1>${esc(name)}</h1>${p.bio?`<p>${esc(p.bio)}</p>`:''}${b.horario?`<p>🕒 ${esc(b.horario)}</p>`:''}
+${socials?`<nav class="so" aria-label="Redes sociales">${socials}</nav>`:''}
+<nav aria-label="Enlaces">${links}</nav></main>
+${!preview&&/^[a-f0-9]{32}$/i.test(b.cf)?`<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"${b.cf}"}'><\/script>`:''}
+${preview?`<script>document.addEventListener('click',function(e){var a=e.target.closest('a[data-id]');if(a){e.preventDefault();parent.postMessage({id:a.dataset.id},'*')}else if(e.target.closest('a')){e.preventDefault()}})<\/script>`:''}
+</body></html>`;
+}
+
+/* ---------- Render ---------- */
+let timer;
+function touch(){ save(); clearTimeout(timer); timer = setTimeout(renderPreview, 150); }
+function renderPreview(){ $('pv').srcdoc = buildPage(true); }
+
+function renderLinks(){
+  const L = $('links-list');
+  if(!S.links.length){ L.innerHTML = '<p class="text-sm text-slate-400 py-6 text-center">Aún no tienes enlaces. Pulsa «Nuevo enlace» para crear el primero.</p>'; return; }
+  L.innerHTML = S.links.map((l,i)=>`
+  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-2" data-id="${esc(l.id)}">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold text-slate-400">Enlace ${i+1}</span>
+      <div class="flex gap-1">
+        <button class="ib" data-act="up" aria-label="Subir" ${i===0?'disabled':''}>↑</button>
+        <button class="ib" data-act="down" aria-label="Bajar" ${i===S.links.length-1?'disabled':''}>↓</button>
+        <button class="ib text-red-400" data-act="del" aria-label="Eliminar enlace">✕</button>
+      </div>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-2">
+      <input class="inp" data-f="title" value="${esc(l.title)}" placeholder="Título" aria-label="Título">
+      <input class="inp" data-f="subtitle" value="${esc(l.subtitle)}" placeholder="Subtítulo (opcional)" aria-label="Subtítulo">
+    </div>
+    <div class="grid grid-cols-3 gap-2">
+      <input class="inp col-span-2" data-f="url" value="${esc(l.url)}" placeholder="https://..." aria-label="Dirección del enlace">
+      <select class="inp" data-f="icon" aria-label="Icono">${Object.entries(ICONS).map(([k,v])=>`<option value="${k}" ${l.icon===k?'selected':''}>${v}</option>`).join('')}</select>
+    </div>
+  </div>`).join('');
+}
+
+function renderStats(){
+  const total = S.links.reduce((a,l)=>a+(l.clicks||0),0);
+  $('stat-total').textContent = total.toLocaleString('es-MX');
+  $('stat-list').innerHTML = S.links.map(l=>{
+    const c = l.clicks||0, pc = total ? Math.round(c/total*100) : 0;
+    return `<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <div class="flex justify-between text-xs"><span class="truncate max-w-[60%]">${esc(l.title)}</span><span class="text-indigo-300 font-semibold">${c} (${pc}%)</span></div>
+      <div class="h-1.5 mt-2 bg-slate-900 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${pc}%"></div></div></div>`;
+  }).join('');
+}
+
+function renderThemes(){
+  $('themes').innerHTML = Object.entries(THEMES).map(([k,t])=>`
+    <button data-theme="${k}" aria-pressed="${S.design.theme===k}" class="rounded-2xl border p-3 text-left text-sm font-medium ${S.design.theme===k?'border-indigo-400 ring-1 ring-indigo-400':'border-slate-700'}"
+      style="background:${t.bg};color:${t.tx}">${t.n}<div class="h-2 w-2/3 rounded mt-2" style="background:${t.bb};border:1px solid ${t.bd}"></div></button>`).join('');
+}
+
+function fillInputs(){
+  $('in-name').value = S.profile.name; $('in-bio').value = S.profile.bio; $('in-avatar').value = S.profile.avatar;
+  SOC.forEach(([k])=>{ $('soc-'+k).value = S.profile.socials[k] || ''; });
+  document.querySelectorAll('[data-biz]').forEach(i=>i.value=S.biz[i.dataset.biz]||''); updateNfc();
+  $('d-font').value = S.design.font; $('d-radius').value = S.design.radius; $('d-hover').value = S.design.hover;
+}
+
+/* ---------- Eventos ---------- */
+const TPL = {
+  estetica:{n:'Estética / Barbería',theme:'medianoche',bio:'Cortes, color y uñas. Agenda tu cita por WhatsApp.',links:[['Agenda tu cita','Respondemos rápido por WhatsApp','chat','Hola, quiero agendar una cita'],['Servicios y precios','Mira lo que ofrecemos','sparkles'],['Galería de trabajos','Síguenos en Instagram','video']]},
+  refaccionaria:{n:'Refaccionaria',theme:'neon',bio:'Refacciones para tu auto. Dinos marca, modelo y año, y te decimos si la tenemos.',links:[['¿Tienes esta pieza?','Mándanos marca, modelo y año','chat','Hola, busco una refacción para mi auto'],['Catálogo y marcas','Lo que manejamos','shop'],['Pedir cotización','Respuesta el mismo día','chat','Hola, quiero una cotización']]},
+  cocina:{n:'Cocina económica / Restaurante',theme:'atardecer',bio:'Comida casera todos los días. Revisa el menú del día y haz tu pedido.',links:[['Menú del día','Lo que hay hoy','sparkles'],['Haz tu pedido','Por WhatsApp, para recoger o a domicilio','chat','Hola, quiero hacer un pedido'],['Pedidos para eventos','Cotiza por cantidad','chat','Hola, quiero cotizar un pedido grande']]},
+  cafeteria:{n:'Cafetería',theme:'claro',bio:'Café de especialidad, postres y un lugar para platicar.',links:[['Menú','Bebidas, postres y alimentos','sparkles'],['Reserva una mesa','Escríbenos por WhatsApp','chat','Hola, quiero reservar una mesa'],['Síguenos en redes','Promociones y novedades','video']]},
+  farmacia:{n:'Farmacia / Consultorio',theme:'esmeralda',bio:'Atención cercana y productos para tu salud.',links:[['Consulta disponibilidad','Pregunta por WhatsApp si tenemos tu producto','chat','Hola, quiero saber si tienen un producto'],['Servicio a domicilio','Pregunta por cobertura','chat','Hola, quiero pedir a domicilio'],['Promociones','Ofertas de la semana','sparkles']]},
+  abarrotes:{n:'Tienda de abarrotes',theme:'oscuro',bio:'Todo lo que necesitas cerca de tu casa. Pide por WhatsApp.',links:[['Haz tu pedido','Te lo llevamos o lo recoges','chat','Hola, quiero hacer un pedido'],['Productos y promociones','Lo más buscado','shop'],['Cómo pagar','Efectivo, transferencia y más','sparkles']]}
+};
+function applyTpl(){
+  const t = TPL[$('tpl').value]; if(!t) return;
+  if(!confirm('Esto reemplaza la descripción, los enlaces y el tema actuales. ¿Continuar?')) return;
+  const wa = (S.profile.socials.whatsapp||'').replace(/\D/g,'');
+  S.profile.bio = t.bio; S.design.theme = t.theme;
+  S.links = t.links.map(([title,subtitle,icon,msg]) => ({id:newId(),title,subtitle,icon,clicks:0,
+    url: icon==='chat' && wa ? `https://wa.me/${wa}?text=${encodeURIComponent(msg||'Hola, quiero más información.')}` : 'https://'}));
+  fillInputs(); renderThemes(); renderLinks(); renderStats(); touch();
+  toast('Plantilla aplicada: completa los enlaces y los datos del negocio');
+}
+$('tpl').innerHTML = Object.entries(TPL).map(([k,t])=>`<option value="${k}">${t.n}</option>`).join('');
+$('socials').innerHTML = SOC.map(([k,label])=>`<div><label class="lbl" for="soc-${k}">${label}</label><input id="soc-${k}" class="inp" data-soc="${k}" placeholder="usuario"></div>`).join('');
+$('d-font').innerHTML = Object.keys(FONTS).map(f=>`<option>${f}</option>`).join('');
+
+document.querySelectorAll('[data-biz]').forEach(i => i.oninput = () => { S.biz[i.dataset.biz] = i.value.trim(); updateNfc(); touch(); });
+$('in-name').oninput = e => { S.profile.name = e.target.value; touch(); };
+$('in-bio').oninput = e => { S.profile.bio = e.target.value; touch(); };
+$('in-avatar').oninput = e => { S.profile.avatar = e.target.value.trim(); touch(); };
+$('socials').oninput = e => { const k = e.target.dataset.soc; if(k){ S.profile.socials[k] = e.target.value; touch(); } };
+$('d-font').onchange = e => { S.design.font = e.target.value; touch(); };
+$('d-radius').onchange = e => { S.design.radius = e.target.value; touch(); };
+$('d-hover').onchange = e => { S.design.hover = e.target.value; touch(); };
+$('themes').onclick = e => { const b = e.target.closest('[data-theme]'); if(b){ S.design.theme = b.dataset.theme; renderThemes(); touch(); } };
+
+$('links-list').addEventListener('input', e => {
+  const f = e.target.dataset.f; if(!f) return;
+  const l = S.links.find(x => x.id === e.target.closest('[data-id]').dataset.id);
+  if(l){ l[f] = e.target.value; touch(); }
+});
+$('links-list').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if(!b) return;
+  const i = S.links.findIndex(x => x.id === b.closest('[data-id]').dataset.id);
+  if(b.dataset.act === 'del'){
+    if(!confirm('¿Eliminar este enlace?')) return;
+    S.links.splice(i,1);
+  }else{
+    const j = i + (b.dataset.act === 'up' ? -1 : 1);
+    if(j < 0 || j >= S.links.length) return;
+    [S.links[i], S.links[j]] = [S.links[j], S.links[i]];
+  }
+  touch(); renderLinks(); renderStats();
+});
+
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach(x => {
+    const on = x === b;
+    x.setAttribute('aria-selected', on);
+    $('p-' + x.dataset.tab).classList.toggle('hidden', !on);
+  });
+});
+
+window.addEventListener('message', e => {
+  if(e.source !== $('pv').contentWindow) return;
+  const l = S.links.find(x => x.id === e.data?.id);
+  if(l){ l.clicks = (l.clicks||0) + 1; save(); renderStats(); toast('Clic de prueba: ' + l.title); }
+});
+
+/* ---------- Acciones ---------- */
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+function addLink(){
+  S.links.push({id:newId(),title:'Nuevo enlace',subtitle:'',url:'https://',icon:'globe',clicks:0});
+  touch(); renderLinks(); renderStats(); toast('Enlace añadido');
+  document.querySelector('[data-tab="enlaces"]').click();
+}
+function addWhatsApp(){
+  const phone = $('wa-phone').value.replace(/\D/g,''), msg = $('wa-msg').value.trim();
+  if(phone.length < 10){ toast('Escribe el número con código de país, por ejemplo 5215512345678'); return; }
+  S.links.push({id:newId(),title:'Escríbeme por WhatsApp',subtitle:msg?`«${msg}»`:'Atención directa por chat',
+    url:`https://wa.me/${phone}?text=${encodeURIComponent(msg || 'Hola, me gustaría más información.')}`,icon:'chat',clicks:0});
+  touch(); renderLinks(); renderStats(); toast('Botón de WhatsApp añadido');
+}
+function resetStats(){ S.links.forEach(l => l.clicks = 0); save(); renderStats(); toast('Estadísticas reiniciadas'); }
+
+const slug = x => String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+function fileName(){ return slug(S.biz.sub) || slug(S.profile.name) || 'pagina'; }
+function updateNfc(){ const x = slug(S.biz.sub); $('nfc-url').textContent = x ? `https://nfcixt.mx/${x}` : 'escribe el nombre corto arriba';  renderQR(); }
+let QRURL = '';
+function renderQR(){
+  const x = slug(S.biz.sub), box = $('qr-box');
+  if(!x || typeof qrcode === 'undefined'){ box.classList.add('hidden'); QRURL = ''; return; }
+  QRURL = `https://nfcixt.mx/${x}`;
+  const q = qrcode(0, 'M'); q.addData(QRURL); q.make();
+  $('qr-svg').innerHTML = q.createSvgTag(6, 0);
+  box.classList.remove('hidden');
+}
+function qrPNG(){
+  if(!QRURL) return;
+  const q = qrcode(0, 'M'); q.addData(QRURL); q.make();
+  const n = q.getModuleCount(), m = 4, u = Math.floor(1024 / (n + 2*m)), size = u * (n + 2*m);
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, size, size); g.fillStyle = '#000';
+  for(let r = 0; r < n; r++) for(let k = 0; k < n; k++) if(q.isDark(r, k)) g.fillRect((k+m)*u, (r+m)*u, u, u);
+  c.toBlob(b => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'qr-' + fileName() + '.png';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('QR descargado');
+  });
+}
+function qrSVG(){
+  if(!QRURL) return;
+  let v = $('qr-svg').innerHTML;
+  if(!/xmlns=/.test(v)) v = v.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  download('qr-' + fileName() + '.svg', v, 'image/svg+xml'); toast('QR descargado');
+}
+function download(name, text, type){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function downloadHTML(){
+  const x = slug(S.biz.sub);
+  if(!x){ toast('Primero escribe el nombre corto del negocio (Perfil → Datos del negocio)'); return; }
+  download(x + '.html', buildPage(false), 'text/html');
+  toast('Descargado: ' + x + '.html. Ponlo en la carpeta nfcixt/ y vuelve a subirla');
+}
+async function copyHTML(){
+  try{ await navigator.clipboard.writeText(buildPage(false)); toast('Código HTML copiado'); }
+  catch(e){ downloadHTML(); }
+}
+function exportJSON(){ download(fileName() + '-proyecto.json', JSON.stringify(S, null, 2), 'application/json'); toast('Proyecto guardado'); }
+function importJSON(input){
+  const f = input.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const d = JSON.parse(r.result);
+      if(!d || !Array.isArray(d.links) || !d.profile) throw 0;
+      localStorage.setItem('linkcraft_v2', JSON.stringify(d));
+      S = load(); fillInputs(); renderThemes(); renderLinks(); renderStats(); renderPreview(); toast('Proyecto abierto');
+    }catch(e){ toast('El archivo no es un proyecto válido de LinkCraft'); }
+  };
+  r.readAsText(f); input.value = '';
+}
+
+let toastTimer;
+function toast(msg){
+  const t = $('toast'); t.textContent = msg;
+  t.classList.remove('opacity-0','-translate-y-6');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('opacity-0','-translate-y-6'), 2600);
+}
+
+fillInputs(); renderThemes(); renderLinks(); renderStats(); renderPreview();
+</script>
+</body>
+</html>
