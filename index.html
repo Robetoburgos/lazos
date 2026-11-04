@@ -53,7 +53,19 @@
       <div id="p-perfil" class="space-y-5">
         <div><label class="lbl" for="in-name">Nombre o negocio</label><input id="in-name" class="inp" maxlength="60"></div>
         <div><label class="lbl" for="in-bio">Descripción corta</label><textarea id="in-bio" class="inp resize-none" rows="2" maxlength="160"></textarea></div>
-        <div><label class="lbl" for="in-avatar">Foto o logo (URL, opcional)</label><input id="in-avatar" class="inp" placeholder="https://..."><p class="text-xs text-slate-500 mt-1">Si la dejas vacía se muestra la inicial del nombre.</p></div>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 space-y-2">
+            <span class="lbl">Logo o foto de perfil (mejor cuadrada)</span>
+            <img id="av-thumb" alt="" class="hidden w-16 h-16 rounded-full object-cover border border-slate-700">
+            <div class="flex gap-2"><label class="btn cursor-pointer">Subir imagen<input type="file" accept="image/*" class="sr-only" onchange="pickImg(this,'avatar',256)"></label><button class="btn" onclick="clearImg('avatar')">Quitar</button></div>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 space-y-2">
+            <span class="lbl">Foto del establecimiento (portada)</span>
+            <img id="cv-thumb" alt="" class="hidden w-full h-16 rounded-xl object-cover border border-slate-700">
+            <div class="flex gap-2"><label class="btn cursor-pointer">Subir foto<input type="file" accept="image/*" class="sr-only" onchange="pickImg(this,'cover',900)"></label><button class="btn" onclick="clearImg('cover')">Quitar</button></div>
+          </div>
+        </div>
+        <div><label class="lbl" for="in-avatar">O pega la dirección de una imagen ya publicada (opcional)</label><input id="in-avatar" class="inp" placeholder="https://..."><p class="text-xs text-slate-500 mt-1">Sin imagen se muestra la inicial del nombre.</p></div>
         <div>
           <h2 class="text-sm font-semibold mb-2">Redes sociales</h2>
           <div id="socials" class="grid sm:grid-cols-2 gap-3"></div>
@@ -164,7 +176,7 @@ const SOC = [
 ];
 
 const DEFAULTS = () => ({
-  profile:{name:'Sofia Ross',bio:'Diseñadora digital y creadora de contenido. Comparto recursos útiles cada semana.',avatar:'',
+  profile:{name:'Sofia Ross',bio:'Diseñadora digital y creadora de contenido. Comparto recursos útiles cada semana.',avatar:'',cover:'',
     socials:{instagram:'sofia.design',tiktok:'',telegram:'',x:'',youtube:'',whatsapp:'5215512345678'}},
   biz:{maps:'',review:'',tel:'',horario:'',sub:'',cf:''},
   design:{theme:'oscuro',font:'Inter',radius:'16px',hover:'lift'},
@@ -217,6 +229,7 @@ function buildPage(preview){
   const avatar = /^(https?:|data:image\/)/i.test(p.avatar||'')
     ? `<img class="av" src="${esc(p.avatar)}" alt="">`
     : `<div class="av" aria-hidden="true">${esc(name.trim().charAt(0).toUpperCase())}</div>`;
+  const cover = /^(https?:|data:image\/)/i.test(p.cover||'') ? `<img class="cv" src="${esc(p.cover)}" alt="">` : '';
   const socials = SOC.map(([k,label,short])=>{
     const u = socialUrl(k, p.socials[k]);
     return u ? `<a href="${u}" target="_blank" rel="noopener noreferrer" aria-label="${esc(label)}">${short}</a>` : '';
@@ -229,14 +242,16 @@ function buildPage(preview){
     <span class="t"><b>${esc(l.title)}</b>${l.subtitle?`<small>${esc(l.subtitle)}</small>`:''}</span></a>`).join('');
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(name)}</title><meta name="description" content="${esc(p.bio)}">
+<title>${esc(name)}</title><meta name="description" content="${esc(p.bio)}"><meta property="og:title" content="${esc(name)}"><meta property="og:description" content="${esc(p.bio)}">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@400;600;700&family=Poppins:wght@400;600;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0}
 body{min-height:100vh;background:${t.bg};color:${t.tx};font-family:${FONTS[d.font]||FONTS.Inter};padding:40px 20px;display:flex;justify-content:center}
 main{width:100%;max-width:440px;text-align:center}
-.av{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid ${t.ac};margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700}
+.av{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid ${t.ac};margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:700;background:rgba(127,127,127,.25)}
+.cv{display:block;width:100%;height:160px;object-fit:cover;border-radius:18px}
+.cv+.av{margin-top:-44px;position:relative}
 h1{font-size:22px}
 p{opacity:.8;font-size:14px;line-height:1.5;margin-top:6px}
 .so{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:18px 0 8px}
@@ -248,7 +263,7 @@ p{opacity:.8;font-size:14px;line-height:1.5;margin-top:6px}
 a:focus-visible{outline:2px solid ${t.ac};outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.b{transition:none}}
 </style></head>
-<body><main>${avatar}<h1>${esc(name)}</h1>${p.bio?`<p>${esc(p.bio)}</p>`:''}${b.horario?`<p>🕒 ${esc(b.horario)}</p>`:''}
+<body><main>${cover}${avatar}<h1>${esc(name)}</h1>${p.bio?`<p>${esc(p.bio)}</p>`:''}${b.horario?`<p>🕒 ${esc(b.horario)}</p>`:''}
 ${socials?`<nav class="so" aria-label="Redes sociales">${socials}</nav>`:''}
 <nav aria-label="Enlaces">${links}</nav></main>
 ${!preview&&/^[a-f0-9]{32}$/i.test(b.cf)?`<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"${b.cf}"}'><\/script>`:''}
@@ -303,7 +318,7 @@ function renderThemes(){
 }
 
 function fillInputs(){
-  $('in-name').value = S.profile.name; $('in-bio').value = S.profile.bio; $('in-avatar').value = S.profile.avatar;
+  $('in-name').value = S.profile.name; $('in-bio').value = S.profile.bio; $('in-avatar').value = /^data:/.test(S.profile.avatar) ? '' : S.profile.avatar; updateThumbs();
   SOC.forEach(([k])=>{ $('soc-'+k).value = S.profile.socials[k] || ''; });
   document.querySelectorAll('[data-biz]').forEach(i=>i.value=S.biz[i.dataset.biz]||''); updateNfc();
   $('d-font').value = S.design.font; $('d-radius').value = S.design.radius; $('d-hover').value = S.design.hover;
@@ -335,7 +350,7 @@ $('d-font').innerHTML = Object.keys(FONTS).map(f=>`<option>${f}</option>`).join(
 document.querySelectorAll('[data-biz]').forEach(i => i.oninput = () => { S.biz[i.dataset.biz] = i.value.trim(); updateNfc(); touch(); });
 $('in-name').oninput = e => { S.profile.name = e.target.value; touch(); };
 $('in-bio').oninput = e => { S.profile.bio = e.target.value; touch(); };
-$('in-avatar').oninput = e => { S.profile.avatar = e.target.value.trim(); touch(); };
+$('in-avatar').oninput = e => { S.profile.avatar = e.target.value.trim(); updateThumbs(); touch(); };
 $('socials').oninput = e => { const k = e.target.dataset.soc; if(k){ S.profile.socials[k] = e.target.value; touch(); } };
 $('d-font').onchange = e => { S.design.font = e.target.value; touch(); };
 $('d-radius').onchange = e => { S.design.radius = e.target.value; touch(); };
@@ -393,12 +408,13 @@ function resetStats(){ S.links.forEach(l => l.clicks = 0); save(); renderStats()
 
 const slug = x => String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 function fileName(){ return slug(S.biz.sub) || slug(S.profile.name) || 'pagina'; }
-function updateNfc(){ const x = slug(S.biz.sub); $('nfc-url').textContent = x ? `https://nfcixt.mx/${x}` : 'escribe el nombre corto arriba';  renderQR(); }
+const BASE = 'https://lazolinking.pages.dev/';
+function updateNfc(){ const x = slug(S.biz.sub); $('nfc-url').textContent = x ? BASE + x : 'escribe el nombre corto arriba';  renderQR(); }
 let QRURL = '';
 function renderQR(){
   const x = slug(S.biz.sub), box = $('qr-box');
   if(!x || typeof qrcode === 'undefined'){ box.classList.add('hidden'); QRURL = ''; return; }
-  QRURL = `https://nfcixt.mx/${x}`;
+  QRURL = BASE + x;
   const q = qrcode(0, 'M'); q.addData(QRURL); q.make();
   $('qr-svg').innerHTML = q.createSvgTag(6, 0);
   box.classList.remove('hidden');
@@ -431,7 +447,7 @@ function downloadHTML(){
   const x = slug(S.biz.sub);
   if(!x){ toast('Primero escribe el nombre corto del negocio (Perfil → Datos del negocio)'); return; }
   download(x + '.html', buildPage(false), 'text/html');
-  toast('Descargado: ' + x + '.html. Ponlo en la carpeta nfcixt/ y vuelve a subirla');
+  toast('Descargado: ' + x + '.html. Ponlo en la carpeta del sitio y vuelve a subirla');
 }
 async function copyHTML(){
   try{ await navigator.clipboard.writeText(buildPage(false)); toast('Código HTML copiado'); }
@@ -450,6 +466,32 @@ function importJSON(input){
     }catch(e){ toast('El archivo no es un proyecto válido de LinkCraft'); }
   };
   r.readAsText(f); input.value = '';
+}
+
+function updateThumbs(){
+  [['avatar','av-thumb'],['cover','cv-thumb']].forEach(([k,id]) => {
+    const v = S.profile[k] || '', ok = /^(https?:|data:image\/)/i.test(v), t = $(id);
+    t.classList.toggle('hidden', !ok); if(ok) t.src = v;
+  });
+}
+function clearImg(key){ S.profile[key] = ''; fillInputs(); touch(); }
+function pickImg(input, key, max){
+  const f = input.files[0]; input.value = ''; if(!f) return;
+  if(!/^image\//.test(f.type)){ toast('Elige un archivo de imagen (JPG o PNG)'); return; }
+  const url = URL.createObjectURL(f), img = new Image();
+  img.onload = () => {
+    const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'), png = key === 'avatar' && f.type === 'image/png';
+    if(!png){ g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); }
+    g.drawImage(img, 0, 0, w, h);
+    S.profile[key] = c.toDataURL(png ? 'image/png' : 'image/jpeg', 0.82);
+    URL.revokeObjectURL(url); fillInputs(); touch();
+    toast('Imagen lista (' + Math.round(S.profile[key].length * 0.75 / 1024) + ' KB)');
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen. Prueba con JPG o PNG'); };
+  img.src = url;
 }
 
 let toastTimer;
