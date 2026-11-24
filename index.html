@@ -32,7 +32,7 @@
   </div>
   <div class="flex flex-wrap gap-2">
     <button class="btn" onclick="exportJSON()">Guardar proyecto</button>
-    <label class="btn cursor-pointer">Abrir proyecto<input type="file" accept="application/json" class="sr-only" onchange="importJSON(this)"></label>
+    <label class="btn cursor-pointer">Abrir proyecto<input type="file" accept=".html,.htm,.json,text/html,application/json" class="sr-only" onchange="importProject(this)"></label>
     <button class="btn" onclick="copyHTML()">Copiar HTML</button>
     <button class="btn-p" onclick="downloadHTML()">Descargar página</button>
   </div>
@@ -242,6 +242,9 @@ function buildPage(preview){
   const links = extra + S.links.map(l=>`<a class="b" href="${safeUrl(l.url)}" target="_blank" rel="noopener noreferrer" data-id="${esc(l.id)}">
     <span class="i" aria-hidden="true">${ICONS[l.icon]||ICONS.globe}</span>
     <span class="t"><b>${esc(l.title)}</b>${l.subtitle?`<small>${esc(l.subtitle)}</small>`:''}</span></a>`).join('');
+  const stateTag = !preview
+    ? `<script type="application/json" id="lc-state">${JSON.stringify(S).replace(/</g, '\\u003c')}<\/script>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(name)}</title><meta name="description" content="${esc(p.bio)}"><meta property="og:title" content="${esc(name)}"><meta property="og:description" content="${esc(p.bio)}">
@@ -270,6 +273,7 @@ a:focus-visible{outline:2px solid ${t.ac};outline-offset:2px}
 <body><main>${cover}${avatar}<h1>${esc(name)}</h1>${p.bio?`<p>${esc(p.bio)}</p>`:''}${b.horario?`<p>🕒 ${esc(b.horario)}</p>`:''}
 ${socials?`<nav class="so" aria-label="Redes sociales">${socials}</nav>`:''}
 <nav aria-label="Enlaces">${links}</nav></main>
+${stateTag}
 ${!preview&&/^[a-f0-9]{32}$/i.test(b.cf)?`<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"${b.cf}"}'><\/script>`:''}
 ${preview?`<script>document.addEventListener('click',function(e){var a=e.target.closest('a[data-id]');if(a){e.preventDefault();parent.postMessage({id:a.dataset.id},'*')}else if(e.target.closest('a')){e.preventDefault()}})<\/script>`:''}
 </body></html>`;
@@ -458,18 +462,99 @@ async function copyHTML(){
   catch(e){ downloadHTML(); }
 }
 function exportJSON(){ download(fileName() + '-proyecto.json', JSON.stringify(S, null, 2), 'application/json'); toast('Proyecto guardado'); }
-function importJSON(input){
+
+function importProject(input){
   const f = input.files[0]; if(!f) return;
   const r = new FileReader();
   r.onload = () => {
     try{
-      const d = JSON.parse(r.result);
+      const raw = String(r.result || '').trim();
+      let d = null;
+
+      if(raw.startsWith('{')){
+        d = JSON.parse(raw);
+      } else {
+        const doc = new DOMParser().parseFromString(raw, 'text/html');
+        const stateEl = doc.getElementById('lc-state');
+
+        if(stateEl){
+          d = JSON.parse(stateEl.textContent);
+        } else {
+          const base = DEFAULTS();
+          base.profile.socials = {instagram:'',facebook:'',tiktok:'',telegram:'',x:'',youtube:'',whatsapp:''};
+          base.links = [];
+          base.biz.sub = f.name.replace(/\.html?$/i, '');
+
+          const h1 = doc.querySelector('main h1');
+          if(h1) base.profile.name = h1.textContent.trim();
+
+          doc.querySelectorAll('main > p').forEach(p => {
+            const txt = p.textContent.trim();
+            if(txt.startsWith('🕒')) base.biz.horario = txt.replace(/^🕒\s*/, '');
+            else if(!base.profile.bio) base.profile.bio = txt;
+          });
+
+          const av = doc.querySelector('img.av');
+          if(av) base.profile.avatar = av.getAttribute('src') || '';
+          const cv = doc.querySelector('img.cv');
+          if(cv) base.profile.cover = cv.getAttribute('src') || '';
+
+          doc.querySelectorAll('nav.so a').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            for(const [k, , , prefix] of SOC){
+              if(href.startsWith(prefix)){
+                base.profile.socials[k] = decodeURIComponent(href.slice(prefix.length));
+                break;
+              }
+            }
+          });
+
+          const revIcons = Object.fromEntries(Object.entries(ICONS).map(([k,v]) => [v,k]));
+          doc.querySelectorAll('nav[aria-label="Enlaces"] a.b').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            const title = a.querySelector('.t b')?.textContent.trim() || '';
+            const sub = a.querySelector('.t small')?.textContent.trim() || '';
+            const iconEmoji = a.querySelector('.i')?.textContent.trim() || '';
+
+            if(!a.dataset.id){
+              if(title === 'Cómo llegar') base.biz.maps = href;
+              else if(title === 'Déjanos tu reseña') base.biz.review = href;
+              else if(title === 'Llamar ahora') base.biz.tel = sub || href.replace(/^tel:/, '');
+            } else {
+              base.links.push({
+                id: a.dataset.id || newId(),
+                title,
+                subtitle: sub,
+                url: href,
+                icon: revIcons[iconEmoji] || 'globe',
+                clicks: 0
+              });
+            }
+          });
+
+          const styleTxt = doc.querySelector('style')?.textContent || '';
+          for(const [k, t] of Object.entries(THEMES)){
+            if(styleTxt.includes(`background:${t.bg}`)){ base.design.theme = k; break; }
+          }
+          const cfScript = doc.querySelector('script[data-cf-beacon]');
+          if(cfScript){
+            try{ base.biz.cf = JSON.parse(cfScript.getAttribute('data-cf-beacon')).token || ''; }catch(e){}
+          }
+
+          d = base;
+        }
+      }
+
       if(!d || !Array.isArray(d.links) || !d.profile) throw 0;
       localStorage.setItem('linkcraft_v2', JSON.stringify(d));
-      S = load(); fillInputs(); renderThemes(); renderLinks(); renderStats(); renderPreview(); toast('Proyecto abierto');
-    }catch(e){ toast('El archivo no es un proyecto válido de LinkCraft'); }
+      S = load(); fillInputs(); renderThemes(); renderLinks(); renderStats(); renderPreview();
+      toast('Proyecto cargado: ' + (S.profile.name || f.name));
+    }catch(e){
+      toast('No se pudo leer el archivo seleccionado');
+    }
   };
-  r.readAsText(f); input.value = '';
+  r.readAsText(f, 'UTF-8');
+  input.value = '';
 }
 
 function updateThumbs(){
