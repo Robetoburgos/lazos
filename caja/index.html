@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlowCoin — Control de efectivo</title>
+  <style>
+    :root{
+      --paper:#EAE4D6;
+      --paper-2:#F5F1E7;
+      --ink:#20291F;
+      --ink-soft:#5B6459;
+      --rule:#C9C1AC;
+      --gold:#A9781F;
+      --ok:#3E6B4C;
+      --bad:#A03F2A;
+      --radius:5px;
+    }
+    body{margin:0;background:var(--paper);}
+    #flowcoin-root{background:var(--paper);color:var(--ink);font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;min-height:100vh;}
+    .app-shell{max-width:480px;margin:0 auto;padding:20px 16px 60px;}
+    .app-shell h1,.app-shell h2,.app-shell h3{font-family:Georgia,'Iowan Old Style','Palatino Linotype',serif;font-weight:600;margin:0 0 4px;}
+    .app-shell p{margin:4px 0;}
+    .small{font-size:13px;color:var(--ink-soft);}
+    .top-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}
+    .card{background:var(--paper-2);border:1px solid var(--rule);border-radius:6px;padding:16px;margin-bottom:16px;}
+    .rule-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--rule);gap:10px;}
+    .rule-row:last-child{border-bottom:none;}
+    .total-line{display:flex;justify-content:space-between;font-weight:700;padding-top:8px;margin-top:4px;border-top:2px solid var(--ink);}
+    input[type=number],input[type=password],select{font-size:16px;padding:7px 8px;border:1px solid var(--rule);border-radius:var(--radius);background:#fff;font-variant-numeric:tabular-nums;}
+    input[type=number]{width:90px;text-align:right;}
+    button{font-family:inherit;font-size:15px;padding:11px 16px;border-radius:var(--radius);border:1px solid var(--ink);background:var(--ink);color:var(--paper-2);cursor:pointer;}
+    button.secondary{background:transparent;color:var(--ink);}
+    button.role-btn{width:100%;margin-bottom:10px;padding:16px;font-size:17px;text-align:left;background:var(--paper-2);color:var(--ink);}
+    .link-btn{background:none;border:none;color:var(--gold);text-decoration:underline;padding:0;font-size:13px;cursor:pointer;}
+    .badge{font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--rule);}
+    .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:5px;animation:pulse 1.8s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
+    .stamp{display:inline-block;border:3px solid;padding:10px 20px;border-radius:6px;font-family:Georgia,serif;font-weight:700;font-size:18px;letter-spacing:1px;text-transform:uppercase;transform:rotate(-2deg);animation:stampIn .35s ease-out;}
+    @keyframes stampIn{from{transform:scale(1.4) rotate(-2deg);opacity:0;}to{transform:scale(1) rotate(-2deg);opacity:1;}}
+    .stamp.ok{border-color:var(--ok);color:var(--ok);}
+    .stamp.bad{border-color:var(--bad);color:var(--bad);}
+    .stamp.warn{border-color:var(--gold);color:var(--gold);}
+    .hist-row{padding:10px 0;border-bottom:1px solid var(--rule);cursor:pointer;}
+    .hist-row:last-child{border-bottom:none;}
+  </style>
+</head>
+<body>
+
+<div id="flowcoin-root"><div id="app" class="app-shell"><p class="small">Conectando con la nube…</p></div></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+  // =========================================================================
+  // 1. PEGA AQUÍ TUS CREDENCIALES DE FIREBASE (firebaseConfig)
+  // =========================================================================
+  const firebaseConfig = {
+     apiKey: "AIzaSyBrSgFwe0Nat1hN_UFdkL1RNwRmdiMD3U8",
+  authDomain: "flowcoin.firebaseapp.com",
+  projectId: "flowcoin",
+  storageBucket: "flowcoin.firebasestorage.app",
+  messagingSenderId: "549235312740",
+  appId: "1:549235312740:web:38985fbfd68225c324b771",
+  measurementId: "G-1QQ7P45RH2"
+  };
+
+  // Contraseña del administrador (puedes cambiarla aquí)
+  const ADMIN_PIN = '1234';
+  // =========================================================================
+
+  const fbApp = initializeApp(firebaseConfig);
+  const db = getFirestore(fbApp);
+
+  const app = document.getElementById('app');
+  let currentSala = null;
+  let turnoCache = {};
+  let indexCache = [];
+  let editWorking = null;
+  let unsubAdmin = null;
+  const today = todayStr();
+
+  function detenerEscucha(){
+    if(unsubAdmin){ unsubAdmin(); unsubAdmin = null; }
+  }
+
+  function todayStr(){ const d=new Date(); const local=new Date(d.getTime()-d.getTimezoneOffset()*60000); return local.toISOString().slice(0,10); }
+  function fmt(n){ n = Math.round(n||0); return '$'+n.toLocaleString('es-MX'); }
+  function horaActual(){ return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}); }
+  function fechaLegible(f){ const p=f.split('-'); const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return parseInt(p[2])+' '+meses[parseInt(p[1])-1]+' '+p[0]; }
+  function docId(sala,fecha){ return sala+'_'+fecha; }
+
+  function mostrarError(msg){
+    limpiarError();
+    const el = document.createElement('div');
+    el.id = 'flowcoin-error';
+    el.style.cssText = 'background:#F7DEDA;border:1px solid var(--bad);color:var(--bad);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;';
+    el.textContent = msg;
+    app.prepend(el);
+  }
+  function limpiarError(){ const el = document.getElementById('flowcoin-error'); if(el) el.remove(); }
+  function mensajeError(e){
+    return 'Error de conexión con Firebase: ' + (e && e.message ? e.message : 'error desconocido');
+  }
+
+  // Operaciones en Firestore
+  async function loadTurno(sala,fecha){
+    const id = docId(sala,fecha);
+    try{
+      const snap = await getDoc(doc(db, 'turnos', id));
+      const t = snap.exists() ? snap.data() : null;
+      turnoCache[id] = t;
+      return t;
+    } catch(e){
+      mostrarError(mensajeError(e));
+      return null;
+    }
+  }
+
+  async function saveTurno(t){
+    const id = docId(t.sala, t.fecha);
+    await setDoc(doc(db, 'turnos', id), t);
+    turnoCache[id] = t;
+  }
+
+  window.init = function(){
+    detenerEscucha();
+    currentSala = null;
+    app.innerHTML = ''+
+      '<h1>FlowCoin</h1>'+
+      '<p class="small">Control de flujo de efectivo — salas de máquinas</p>'+
+      '<div style="margin-top:24px">'+
+        '<button class="role-btn" onclick="selectSala(\'A\')">Encargado — Sala A</button>'+
+        '<button class="role-btn" onclick="selectSala(\'B\')">Encargado — Sala B</button>'+
+        '<button class="role-btn" onclick="selectAdmin()">Administrador</button>'+
+      '</div>';
+  };
+
+  function headerBar(title){
+    return '<div class="top-row"><h2>'+title+'</h2><button class="link-btn" onclick="init()">Cambiar rol</button></div>';
+  }
+
+  window.selectSala = async function(sala){
+    detenerEscucha();
+    currentSala = sala;
+    app.innerHTML = headerBar('Sala '+sala) + '<p class="small">Cargando desde la nube…</p>';
+    const t = await loadTurno(sala, today);
+    renderEncargado(t);
+  };
+
+  function renderEncargado(t){
+    if(!t) return renderInicialForm();
+    if(!t.cierre) return renderEnCurso(t);
+    return renderCerrado(t);
+  }
+
+  function renderInicialForm(){
+    app.innerHTML = headerBar('Sala '+currentSala) +
+      '<p class="small">'+fechaLegible(today)+' — aún no se registra el conteo inicial de hoy.</p>'+
+      '<div class="card"><h3>Conteo inicial</h3>'+
+      '<p class="small">Cuenta las monedas en caja antes de abrir.</p>'+
+      [1,2,5,10].map(function(d){
+        return '<div class="rule-row"><span>Monedas de $'+d+'</span><input type="number" min="0" id="ini-'+d+'" value="0" oninput="actualizarTotalInicial()"></div>';
+      }).join('')+
+      '<div class="total-line" id="ini-total"><span>Total inicial</span><span>$0</span></div>'+
+      '<div style="margin-top:16px"><button onclick="guardarInicial()">Guardar e iniciar turno</button></div>'+
+      '</div>';
+  }
+
+  window.actualizarTotalInicial = function(){
+    let total=0;
+    [1,2,5,10].forEach(function(d){ total += (parseInt(document.getElementById('ini-'+d).value)||0)*d; });
+    document.querySelector('#ini-total span:last-child').textContent = fmt(total);
+  };
+
+  window.guardarInicial = async function(){
+    limpiarError();
+    const vals={}; let monto=0;
+    [1,2,5,10].forEach(function(d){ const c=parseInt(document.getElementById('ini-'+d).value)||0; vals['c'+d]=c; monto+=c*d; });
+    vals.monto = monto; vals.hora = horaActual();
+    const t = { sala: currentSala, fecha: today, inicial: vals, incrementos: [], cierre: null, estado:'abierto' };
+    try{
+      await saveTurno(t);
+      renderEncargado(t);
+    }catch(e){
+      mostrarError(mensajeError(e));
+    }
+  };
+
+  function renderEnCurso(t){
+    const totalInc = t.incrementos.reduce(function(s,i){ return s+i.monto; },0);
+    const acumulado = t.inicial.monto + totalInc;
+    app.innerHTML = headerBar('Sala '+currentSala) +
+      '<p class="small">'+fechaLegible(today)+' — <span class="badge">Turno abierto</span></p>'+
+      '<div class="card"><h3>Conteo inicial</h3>'+
+      [1,2,5,10].map(function(d){ return '<div class="rule-row"><span>Monedas de $'+d+'</span><span>'+t.inicial['c'+d]+'</span></div>'; }).join('')+
+      '<div class="total-line"><span>Total inicial</span><span>'+fmt(t.inicial.monto)+'</span></div></div>'+
+      '<div class="card"><h3>Incrementos del día</h3>'+
+      (t.incrementos.length ? t.incrementos.map(function(inc,idx){
+        return '<div class="rule-row"><span>'+inc.hora+' — $'+inc.denom+' x '+inc.cantidad+'</span><span>'+fmt(inc.monto)+' <button class="link-btn" onclick="eliminarIncremento('+idx+')">quitar</button></span></div>';
+      }).join('') : '<p class="small">Sin incrementos registrados.</p>')+
+      '<div class="total-line"><span>Total incrementos</span><span>'+fmt(totalInc)+'</span></div>'+
+      '<div style="margin-top:16px;display:flex;gap:8px;align-items:end;flex-wrap:wrap">'+
+        '<div><label class="small">Denominación</label><br><select id="inc-denom"><option value="1">$1</option><option value="5">$5</option><option value="10">$10</option></select></div>'+
+        '<div><label class="small">Cantidad</label><br><input type="number" min="1" id="inc-cant" style="width:70px"></div>'+
+        '<button onclick="agregarIncremento()">Agregar</button>'+
+      '</div></div>'+
+      '<div class="card" style="background:transparent;border-style:dashed">'+
+      '<div class="rule-row"><span>Acumulado esperado hasta ahora</span><span>'+fmt(acumulado)+'</span></div>'+
+      '<p class="small">Al cerrar, se restan devoluciones y transferencias para obtener el esperado final.</p></div>'+
+      '<button style="width:100%" onclick="renderCierreForm()">Cerrar turno (conteo final)</button>'+
+      '<div style="text-align:center;margin-top:14px"><button class="link-btn" onclick="confirmarReinicio(\''+currentSala+'\',\'encargado\')">Reiniciar turno de hoy</button></div>';
+  }
+
+  window.agregarIncremento = async function(){
+    limpiarError();
+    const denom = parseInt(document.getElementById('inc-denom').value);
+    const cant = parseInt(document.getElementById('inc-cant').value)||0;
+    if(cant<=0) return;
+    try{
+      const t = await loadTurno(currentSala, today);
+      t.incrementos.push({denom:denom, cantidad:cant, monto:denom*cant, hora:horaActual()});
+      await saveTurno(t);
+      renderEncargado(t);
+    }catch(e){
+      mostrarError(mensajeError(e));
+    }
+  };
+
+  window.eliminarIncremento = async function(idx){
+    try{
+      const t = await loadTurno(currentSala, today);
+      t.incrementos.splice(idx,1);
+      await saveTurno(t);
+      renderEncargado(t);
+    }catch(e){
+      mostrarError(mensajeError(e));
+    }
+  };
+
+  window.renderCierreForm = async function(){
+    app.innerHTML = headerBar('Sala '+currentSala) + '<p class="small">Cargando…</p>';
+    const t = await loadTurno(currentSala, today);
+    app.innerHTML = headerBar('Sala '+currentSala) +
+      '<div class="card"><h3>Cierre de turno</h3>'+
+      '<p class="small">Cuenta lo que queda físicamente en caja al final del día.</p>'+
+      [1,2,5,10].map(function(d){ return '<div class="rule-row"><span>Monedas de $'+d+'</span><input type="number" min="0" id="fin-'+d+'" value="0"></div>'; }).join('')+
+      '<div class="rule-row"><span>Transferencias del día ($)</span><input type="number" min="0" id="fin-transf" value="0"></div>'+
+      '<div class="rule-row"><span>Devoluciones a jugadores ($)</span><input type="number" min="0" id="fin-dev" value="0"></div>'+
+      '<div class="rule-row"><span>Billetes contados ($)</span><input type="number" min="0" id="fin-bill" value="0"></div>'+
+      '</div>'+
+      '<div class="card"><h3>Datos informativos</h3>'+
+      '<p class="small">Estos campos son solo de registro y no afectan el cálculo del cierre.</p>'+
+      '<div class="rule-row"><span>Billete de cascada de $5 ($)</span><input type="number" min="0" id="fin-cascada5" value="0"></div>'+
+      '<div class="rule-row"><span>Billete cascada de $10 ($)</span><input type="number" min="0" id="fin-cascada10" value="0"></div>'+
+      '<div class="rule-row"><span>Billete cambiado por monedas ($)</span><input type="number" min="0" id="fin-bill-monedas" value="0"></div>'+
+      '<div style="margin-top:16px;display:flex;gap:8px">'+
+        '<button class="secondary" onclick="selectSala(\''+currentSala+'\')">Cancelar</button>'+
+        '<button onclick="guardarCierre()">Registrar cierre</button>'+
+      '</div></div>';
+  };
+
+  window.guardarCierre = async function(){
+    limpiarError();
+    try{
+      const t = await loadTurno(currentSala, today);
+      const vals={}; let montoMonedas=0;
+      [1,2,5,10].forEach(function(d){ const c=parseInt(document.getElementById('fin-'+d).value)||0; vals['c'+d]=c; montoMonedas+=c*d; });
+      const transferencias = parseFloat(document.getElementById('fin-transf').value)||0;
+      const devoluciones = parseFloat(document.getElementById('fin-dev').value)||0;
+      const billetes = parseFloat(document.getElementById('fin-bill').value)||0;
+
+      // Campos meramente informativos
+      const cascada5 = parseFloat(document.getElementById('fin-cascada5').value)||0;
+      const cascada10 = parseFloat(document.getElementById('fin-cascada10').value)||0;
+      const billetePorMonedas = parseFloat(document.getElementById('fin-bill-monedas').value)||0;
+
+      const totalInc = t.incrementos.reduce(function(s,i){ return s+i.monto; },0);
+      const esperado = t.inicial.monto + totalInc - devoluciones - transferencias;
+      const final = montoMonedas + billetes;
+      const diferencia = Math.round(final - esperado);
+
+      vals.montoMonedas = montoMonedas;
+      vals.transferencias = transferencias;
+      vals.devoluciones = devoluciones;
+      vals.billetes = billetes;
+      vals.cascada5 = cascada5;
+      vals.cascada10 = cascada10;
+      vals.billetePorMonedas = billetePorMonedas;
+      vals.esperado = esperado;
+      vals.final = final;
+      vals.diferencia = diferencia;
+      vals.hora = horaActual();
+
+      t.cierre = vals; t.estado = 'cerrado';
+      await saveTurno(t);
+      renderEncargado(t);
+    }catch(e){
+      mostrarError(mensajeError(e));
+    }
+  };
+
+  function stampFor(dif){
+    if(dif===0) return {cls:'ok', txt:'Cuadrado'};
+    if(dif<0) return {cls:'bad', txt:'Faltante '+fmt(Math.abs(dif))};
+    return {cls:'warn', txt:'Sobrante '+fmt(dif)};
+  }
+
+  function renderCerrado(t){
+    const s = stampFor(t.cierre.diferencia);
+    const totalInc = t.incrementos.reduce(function(a,i){ return a+i.monto; },0);
+    app.innerHTML = headerBar('Sala '+currentSala) +
+      '<p class="small">'+fechaLegible(today)+' — <span class="badge">Turno cerrado</span></p>'+
+      '<div class="card" style="text-align:center"><div class="small">Resultado del cierre</div>'+
+      '<div style="margin:14px 0"><span class="stamp '+s.cls+'">'+s.txt+'</span></div>'+
+      '<div class="small">Esperado '+fmt(t.cierre.esperado)+' · Contado '+fmt(t.cierre.final)+'</div></div>'+
+      '<div class="card"><h3>Detalle</h3>'+
+      '<div class="rule-row"><span>Inicial</span><span>'+fmt(t.inicial.monto)+'</span></div>'+
+      '<div class="rule-row"><span>Incrementos</span><span>'+fmt(totalInc)+'</span></div>'+
+      '<div class="rule-row"><span>Devoluciones</span><span>-'+fmt(t.cierre.devoluciones)+'</span></div>'+
+      '<div class="rule-row"><span>Transferencias</span><span>-'+fmt(t.cierre.transferencias)+'</span></div>'+
+      '<div class="total-line"><span>Esperado</span><span>'+fmt(t.cierre.esperado)+'</span></div>'+
+      [1,2,5,10].map(function(d){ return '<div class="rule-row"><span>Monedas finales de $'+d+'</span><span>'+t.cierre['c'+d]+'</span></div>'; }).join('')+
+      '<div class="rule-row"><span>Billetes</span><span>'+fmt(t.cierre.billetes)+'</span></div>'+
+      '<div class="total-line"><span>Contado</span><span>'+fmt(t.cierre.final)+'</span></div></div>'+
+      '<div class="card"><h3>Datos informativos</h3>'+
+      '<div class="rule-row"><span>Billete de cascada de $5</span><span>'+fmt(t.cierre.cascada5)+'</span></div>'+
+      '<div class="rule-row"><span>Billete cascada de $10</span><span>'+fmt(t.cierre.cascada10)+'</span></div>'+
+      '<div class="rule-row"><span>Billete cambiado por monedas</span><span>'+fmt(t.cierre.billetePorMonedas)+'</span></div>'+
+      '</div>'+
+      '<p class="small" style="text-align:center">Turno del día ya registrado. Si hubo un error, pide al administrador que lo reabra.</p>'+
+      '<div style="text-align:center;margin-top:6px"><button class="link-btn" onclick="confirmarReinicio(\''+currentSala+'\',\'encargado\')">Reiniciar turno de hoy</button></div>';
+  }
+
+  window.selectAdmin = function(){
+    limpiarError();
+    detenerEscucha();
+    currentSala = null;
+    app.innerHTML = headerBar('Administrador') +
+      '<div class="card"><h3>Acceso de administrador</h3>'+
+      '<div class="rule-row"><span>Contraseña</span><input type="password" id="admin-pin" style="width:140px" onkeydown="if(event.key===\'Enter\')verificarPin()"></div>'+
+      '<div style="margin-top:16px;display:flex;gap:8px"><button class="secondary" onclick="init()">Cancelar</button><button onclick="verificarPin()">Entrar</button></div>'+
+      '</div>';
+    const el = document.getElementById('admin-pin');
+    if(el) el.focus();
+  };
+
+  window.verificarPin = async function(){
+    limpiarError();
+    const el = document.getElementById('admin-pin');
+    const val = el ? el.value : '';
+    if(val !== ADMIN_PIN){ mostrarError('Contraseña incorrecta.'); return; }
+    mostrarPanelAdmin();
+  };
+
+  window.mostrarPanelAdmin = function(){
+    detenerEscucha();
+    currentSala = null;
+    app.innerHTML = headerBar('Administrador') + '<p class="small">Sincronizando en tiempo real…</p>';
+
+    // Escucha en tiempo real de toda la colección 'turnos'
+    unsubAdmin = onSnapshot(collection(db, 'turnos'), function(snapshot){
+      turnoCache = {};
+      indexCache = [];
+      snapshot.forEach(function(docSnap){
+        const data = docSnap.data();
+        turnoCache[docId(data.sala, data.fecha)] = data;
+        indexCache.push({ sala: data.sala, fecha: data.fecha });
+      });
+      const tA = turnoCache[docId('A', today)] || null;
+      const tB = turnoCache[docId('B', today)] || null;
+      renderAdmin(tA, tB);
+    }, function(error){
+      mostrarError(mensajeError(error));
+    });
+  };
+
+  function resumenSala(sala,t){
+    if(!t) return '<div class="card"><h3>Sala '+sala+'</h3><p class="small">Sin turno iniciado hoy.</p></div>';
+    if(!t.cierre){
+      const totalInc = t.incrementos.reduce(function(s,i){ return s+i.monto; },0);
+      return '<div class="card"><h3>Sala '+sala+' <span class="badge">Abierto</span></h3>'+
+        '<div class="rule-row"><span>Inicial</span><span>'+fmt(t.inicial.monto)+'</span></div>'+
+        '<div class="rule-row"><span>Incrementos</span><span>'+fmt(totalInc)+'</span></div>'+
+        '<div class="total-line"><span>Acumulado</span><span>'+fmt(t.inicial.monto+totalInc)+'</span></div>'+
+        '<div style="text-align:center;margin-top:8px"><button class="link-btn" onclick="editarTurno(\''+sala+'\',\''+t.fecha+'\')">Corregir</button> · <button class="link-btn" onclick="confirmarReinicio(\''+sala+'\',\'admin\')">Reiniciar turno de hoy</button></div></div>';
+    }
+    const s = stampFor(t.cierre.diferencia);
+    return '<div class="card"><h3>Sala '+sala+' <span class="badge">Cerrado</span></h3>'+
+      '<div class="rule-row"><span>Esperado</span><span>'+fmt(t.cierre.esperado)+'</span></div>'+
+      '<div class="rule-row"><span>Contado</span><span>'+fmt(t.cierre.final)+'</span></div>'+
+      '<div style="text-align:center;margin-top:10px"><span class="stamp '+s.cls+'" style="font-size:14px;padding:6px 12px">'+s.txt+'</span></div>'+
+      '<div style="text-align:center;margin-top:8px"><button class="link-btn" onclick="editarTurno(\''+sala+'\',\''+t.fecha+'\')">Corregir</button> · <button class="link-btn" onclick="confirmarReinicio(\''+sala+'\',\'admin\')">Reiniciar turno de hoy</button></div></div>';
+  }
+
+  function renderAdmin(tA,tB){
+    const historial = indexCache.slice().sort(function(a,b){
+      if(a.fecha!==b.fecha) return b.fecha.localeCompare(a.fecha);
+      return a.sala.localeCompare(b.sala);
+    });
+    app.innerHTML = headerBar('Administrador') +
+      '<p class="small">'+fechaLegible(today)+' <span style="float:right;color:var(--ok)"><span class="live-dot"></span>En vivo</span></p>'+
+      resumenSala('A',tA) + resumenSala('B',tB) +
+      '<h3 style="margin-top:24px">Historial</h3>'+
+      '<div id="historial-list">'+
+      (historial.length ? historial.map(function(h){
+        const key = h.sala+'-'+h.fecha;
+        return '<div class="hist-row" onclick="toggleHistDetalle(\''+h.sala+'\',\''+h.fecha+'\')">'+
+          '<div style="display:flex;justify-content:space-between"><span>'+fechaLegible(h.fecha)+' — Sala '+h.sala+'</span><span id="hist-badge-'+key+'" class="small">…</span></div>'+
+          '<div id="hist-detalle-'+key+'"></div></div>';
+      }).join('') : '<p class="small">Aún no hay historial.</p>')+
+      '</div>';
+    historial.forEach(function(h){ pintarBadge(h.sala,h.fecha); });
+  }
+
+  function pintarBadge(sala,fecha){
+    const key = sala+'-'+fecha;
+    const t = turnoCache[docId(sala,fecha)];
+    const el = document.getElementById('hist-badge-'+key);
+    if(!el) return;
+    if(!t){ el.textContent='—'; return; }
+    if(!t.cierre){ el.textContent='Abierto'; return; }
+    const s = stampFor(t.cierre.diferencia);
+    el.textContent = s.txt;
+    el.style.color = s.cls==='ok' ? 'var(--ok)' : (s.cls==='bad' ? 'var(--bad)' : 'var(--gold)');
+  }
+
+  window.toggleHistDetalle = function(sala,fecha){
+    const key = sala+'-'+fecha;
+    const el = document.getElementById('hist-detalle-'+key);
+    if(el.innerHTML){ el.innerHTML=''; return; }
+    const t = turnoCache[docId(sala,fecha)];
+    if(!t){ el.innerHTML = '<p class="small">Sin datos.</p>'; return; }
+    if(!t.cierre){
+      const totalInc = t.incrementos.reduce(function(s,i){ return s+i.monto; },0);
+      el.innerHTML = '<p class="small" style="padding-top:8px">Inicial '+fmt(t.inicial.monto)+' · Incrementos '+fmt(totalInc)+' · Aún abierto</p>';
+      return;
+    }
+    el.innerHTML = '<p class="small" style="padding-top:8px">Inicial '+fmt(t.inicial.monto)+' · Devoluciones '+fmt(t.cierre.devoluciones)+' · Transferencias '+fmt(t.cierre.transferencias)+'<br>'+
+      'Esperado '+fmt(t.cierre.esperado)+' · Contado '+fmt(t.cierre.final)+' (monedas '+fmt(t.cierre.montoMonedas)+' + billetes '+fmt(t.cierre.billetes)+')<br>'+
+      'Info: Cascada $5 '+fmt(t.cierre.cascada5)+' · Cascada $10 '+fmt(t.cierre.cascada10)+' · Billete x monedas '+fmt(t.cierre.billetePorMonedas)+
+      ' <button class="link-btn" onclick="event.stopPropagation();editarTurno(\''+sala+'\',\''+fecha+'\')">Corregir</button></p>';
+  };
+
+  window.editarTurno = async function(sala,fecha){
+    limpiarError();
+    detenerEscucha();
+    app.innerHTML = headerBar('Administrador') + '<p class="small">Cargando…</p>';
+    const t = turnoCache[docId(sala,fecha)] || await loadTurno(sala,fecha);
+    if(!t){ mostrarError('No se encontró ese turno.'); return mostrarPanelAdmin(); }
+    editWorking = JSON.parse(JSON.stringify(t));
+    renderEditarTurno();
+  };
+
+  function renderEditarTurno(){
+    const t = editWorking;
+    let html = headerBar('Administrador') +
+      '<p class="small">Corrigiendo Sala '+t.sala+' — '+fechaLegible(t.fecha)+'</p>'+
+      '<div class="card"><h3>Conteo inicial</h3>'+
+      [1,2,5,10].map(function(d){ return '<div class="rule-row"><span>Monedas de $'+d+'</span><input type="number" min="0" id="edit-ini-'+d+'" value="'+t.inicial['c'+d]+'"></div>'; }).join('')+
+      '</div>'+
+      '<div class="card"><h3>Incrementos</h3>'+
+      (t.incrementos.length ? t.incrementos.map(function(inc,idx){
+        return '<div class="rule-row"><span>'+inc.hora+' — $'+inc.denom+' x <input type="number" min="0" style="width:60px" id="edit-inc-'+idx+'" value="'+inc.cantidad+'"></span><button class="link-btn" onclick="quitarIncrementoEdit('+idx+')">quitar</button></div>';
+      }).join('') : '<p class="small">Sin incrementos.</p>')+
+      '</div>';
+    if(t.cierre){
+      html += '<div class="card"><h3>Cierre</h3>'+
+        [1,2,5,10].map(function(d){ return '<div class="rule-row"><span>Monedas finales de $'+d+'</span><input type="number" min="0" id="edit-fin-'+d+'" value="'+t.cierre['c'+d]+'"></div>'; }).join('')+
+        '<div class="rule-row"><span>Transferencias ($)</span><input type="number" min="0" id="edit-fin-transf" value="'+t.cierre.transferencias+'"></div>'+
+        '<div class="rule-row"><span>Devoluciones ($)</span><input type="number" min="0" id="edit-fin-dev" value="'+t.cierre.devoluciones+'"></div>'+
+        '<div class="rule-row"><span>Billetes ($)</span><input type="number" min="0" id="edit-fin-bill" value="'+t.cierre.billetes+'"></div>'+
+        '</div>'+
+        '<div class="card"><h3>Datos informativos</h3>'+
+        '<div class="rule-row"><span>Billete de cascada de $5 ($)</span><input type="number" min="0" id="edit-fin-cascada5" value="'+(t.cierre.cascada5||0)+'"></div>'+
+        '<div class="rule-row"><span>Billete cascada de $10 ($)</span><input type="number" min="0" id="edit-fin-cascada10" value="'+(t.cierre.cascada10||0)+'"></div>'+
+        '<div class="rule-row"><span>Billete cambiado por monedas ($)</span><input type="number" min="0" id="edit-fin-bill-monedas" value="'+(t.cierre.billetePorMonedas||0)+'"></div>'+
+        '</div>';
+    } else {
+      html += '<p class="small">Este turno aún no tiene cierre registrado — solo se corregirá el inicial y los incrementos.</p>';
+    }
+    html += '<div style="display:flex;gap:8px"><button class="secondary" onclick="mostrarPanelAdmin()">Cancelar</button><button onclick="guardarEdicionAdmin()">Guardar corrección</button></div>';
+    app.innerHTML = html;
+  }
+
+  window.quitarIncrementoEdit = function(idx){
+    editWorking.incrementos.splice(idx,1);
+    renderEditarTurno();
+  };
+
+  window.guardarEdicionAdmin = async function(){
+    limpiarError();
+    try{
+      const t = editWorking;
+      const iniVals={}; let montoIni=0;
+      [1,2,5,10].forEach(function(d){ const c=parseInt(document.getElementById('edit-ini-'+d).value)||0; iniVals['c'+d]=c; montoIni+=c*d; });
+      iniVals.monto = montoIni; iniVals.hora = t.inicial.hora;
+      t.inicial = iniVals;
+      t.incrementos.forEach(function(inc,idx){
+        const c = parseInt(document.getElementById('edit-inc-'+idx).value)||0;
+        inc.cantidad = c; inc.monto = inc.denom*c;
+      });
+      if(t.cierre){
+        const finVals={}; let montoMonedas=0;
+        [1,2,5,10].forEach(function(d){ const c=parseInt(document.getElementById('edit-fin-'+d).value)||0; finVals['c'+d]=c; montoMonedas+=c*d; });
+        const transferencias = parseFloat(document.getElementById('edit-fin-transf').value)||0;
+        const devoluciones = parseFloat(document.getElementById('edit-fin-dev').value)||0;
+        const billetes = parseFloat(document.getElementById('edit-fin-bill').value)||0;
+
+        // Campos meramente informativos
+        const cascada5 = parseFloat(document.getElementById('edit-fin-cascada5').value)||0;
+        const cascada10 = parseFloat(document.getElementById('edit-fin-cascada10').value)||0;
+        const billetePorMonedas = parseFloat(document.getElementById('edit-fin-bill-monedas').value)||0;
+
+        const totalInc = t.incrementos.reduce(function(s,i){ return s+i.monto; },0);
+        const esperado = t.inicial.monto + totalInc - devoluciones - transferencias;
+        const final = montoMonedas + billetes;
+        const diferencia = Math.round(final - esperado);
+
+        finVals.montoMonedas = montoMonedas;
+        finVals.transferencias = transferencias;
+        finVals.devoluciones = devoluciones;
+        finVals.billetes = billetes;
+        finVals.cascada5 = cascada5;
+        finVals.cascada10 = cascada10;
+        finVals.billetePorMonedas = billetePorMonedas;
+        finVals.esperado = esperado;
+        finVals.final = final;
+        finVals.diferencia = diferencia;
+        finVals.hora = horaActual();
+
+        t.cierre = finVals;
+      }
+      await saveTurno(t);
+      editWorking = null;
+      mostrarPanelAdmin();
+    }catch(e){
+      mostrarError(mensajeError(e));
+    }
+  };
+
+  async function borrarTurnoHoy(sala){
+    const id = docId(sala, today);
+    await deleteDoc(doc(db, 'turnos', id));
+    delete turnoCache[id];
+  }
+
+  window.confirmarReinicio = function(sala, origen){
+    limpiarError();
+    detenerEscucha();
+    app.innerHTML = headerBar(origen==='admin' ? 'Administrador' : 'Sala '+sala) +
+      '<div class="card"><h3>Reiniciar turno de hoy — Sala '+sala+'</h3>'+
+      '<p class="small">Esto borra por completo el conteo inicial, los incrementos y el cierre de hoy para esta sala. No se puede deshacer.</p>'+
+      '<div style="margin-top:16px;display:flex;gap:8px">'+
+      '<button class="secondary" onclick="'+(origen==='admin' ? 'mostrarPanelAdmin()' : 'selectSala(\''+sala+'\')')+'">Cancelar</button>'+
+      '<button onclick="ejecutarReinicio(\''+sala+'\',\''+origen+'\')">Sí, borrar y empezar de nuevo</button>'+
+      '</div></div>';
+  };
+
+  window.ejecutarReinicio = async function(sala, origen){
+    limpiarError();
+    try{
+      await borrarTurnoHoy(sala);
+      if(origen==='admin') mostrarPanelAdmin(); else selectSala(sala);
+    }catch(e){
+      mostrarError(mensajeError(e));
+    }
+  };
+
+  init();
+</script>
+</body>
+</html>
